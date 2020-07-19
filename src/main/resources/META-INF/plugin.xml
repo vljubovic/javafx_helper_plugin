@@ -1,0 +1,37 @@
+<!-- Copyright 2000-2020 JetBrains s.r.o. and other contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file. -->
+
+<idea-plugin>
+
+  <!--  Unique id for this plugin. Must stay constant for the life of the plugin.  -->
+  <id>com.github.vljubovic.javaFxHelper</id>
+
+  <!-- Text to display as name on Preferences/Settings | Plugin page  -->
+  <name>JavaFX Helper</name>
+  <vendor>vljubovic</vendor>
+
+  <!-- Product and plugin compatibility requirements -->
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.java</depends>
+
+  <!-- Text to display as description on Preferences/Settings | Plugin page  -->
+  <description>
+    <![CDATA[
+      This is a useful plugin for people who create a lot of JavaFX projects. It will automatically
+      add JavaFX library and configure VM options every time a JavaFX project is created, opened or cloned.
+    ]]>
+  </description>
+
+  <!-- Text to display as company information on Preferences/Settings | Plugin page -->
+
+  <applicationListeners>
+    <listener class="com.github.vljubovic.javaFxHelper.listeners.ProjectOpenCloseListener" topic="com.intellij.openapi.project.ProjectManagerListener"/>
+  </applicationListeners>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <applicationConfigurable parentId="tools" instance="com.github.vljubovic.javaFxHelper.settings.AppSettingsConfigurable"
+                             id="org.intellij.sdk.settings.AppSettingsConfigurable"
+                             displayName="JavaFX Helper"/>
+    <projectService serviceImplementation="com.github.vljubovic.javaFxHelper.services.JavaFxConfiguratorService"/>
+    <applicationService serviceImplementation="com.github.vljubovic.javaFxHelper.settings.AppSettingsState"/>
+  </extensions>
+</idea-plugin>
