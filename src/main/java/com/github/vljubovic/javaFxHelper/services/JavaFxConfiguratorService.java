@@ -38,21 +38,20 @@ import javax.naming.directory.SearchControls;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class JavaFxConfiguratorService {
     private final Project myProject;
     private boolean isJavaFxProject = false;
     private boolean isProjectConfigured = false;
+    private PsiClass mainClass;
 
     public JavaFxConfiguratorService(Project project) {
         myProject = project;
     }
 
-    private void configureProject() {
-        isProjectConfigured = true;
-        Messages.showMessageDialog(myProject, "This is a message" + myProject.getName(), "My plugin message", Messages.getInformationIcon());
-    }
-
+    //If this is a JavaFX project, run configured tasks on it
     public void detectProjectType() {
         AppSettingsState settings = AppSettingsState.getInstance();
         if (settings.javaFxPath.isEmpty())
@@ -65,6 +64,11 @@ public class JavaFxConfiguratorService {
 
         if (isJavaFxProject) {
             //Messages.showMessageDialog(myProject, "Project " + myProject.getName() + " is a JavaFX project", "JavaFX Helper", Messages.getInformationIcon());
+            findMainClass();
+            if (mainClass == null) {
+                System.out.println("JavaFX Helper: Couldn't find main class on project " + myProject.getName());
+                return;
+            }
             addJavaFxLibrary();
 
             String vmParameters;
@@ -74,69 +78,83 @@ public class JavaFxConfiguratorService {
                 vmParameters = "--module-path " + settings.javaFxPath + " --add-modules javafx.controls,javafx.fxml";
 
             if (!changeRunConfiguration(vmParameters))
-                addRunConfiguration(vmParameters);
+                DumbService.getInstance(myProject).runWhenSmart(() -> addRunConfiguration(vmParameters));
 
             if (settings.fixBrokenSdk)
                 fixBrokenSdk();
         }
     }
 
+    // If project SDK is invalid, set the first valid Java SDK
     private void fixBrokenSdk() {
         Sdk projectSDK = ProjectRootManager.getInstance(myProject).getProjectSdk();
         if (projectSDK == null) {
             Optional<Sdk> existingSdk = Arrays.stream(ProjectJdkTable.getInstance().getAllJdks())
-                    // If a JDK belongs to this particular `pantsExecutable`, then its name will contain the path to Pants.
                     .filter(sdk -> sdk.getSdkType() instanceof JavaSdk)
                     .findFirst();
 
             if (existingSdk.isPresent()) {
-                ProjectRootManager.getInstance(myProject).setProjectSdk(existingSdk.get());
-                //Messages.showMessageDialog(myProject, "SDK was null, becomes " + existingSdk.get(), "JavaFX Helper", Messages.getInformationIcon());
+                ApplicationManager.getApplication().runWriteAction(() ->
+                    ProjectRootManager.getInstance(myProject).setProjectSdk(existingSdk.get()));
+                // Messages.showMessageDialog(myProject, "SDK was null, becomes " + existingSdk.get(), "JavaFX Helper", Messages.getInformationIcon());
             }
-            //else
-            //    Messages.showMessageDialog(myProject, "SDK is null, no Java SDK found", "JavaFX Helper", Messages.getInformationIcon());
+            // else
+                // Messages.showMessageDialog(myProject, "SDK is null, no Java SDK found", "JavaFX Helper", Messages.getInformationIcon());
         }
-        //else
-         //   Messages.showMessageDialog(myProject, "SDK is " + projectSDK, "JavaFX Helper", Messages.getInformationIcon());
+        // else
+            // Messages.showMessageDialog(myProject, "SDK is " + projectSDK, "JavaFX Helper", Messages.getInformationIcon());
     }
 
+    // Add new run configuration to project
     private void addRunConfiguration(String vmParameters) {
         RunManager runManager = RunManager.getInstance(myProject);
-        PsiClass mainClass = findMainClass();
-        if (mainClass == null) return;
 
-        ApplicationConfiguration applicationConfiguration = new ApplicationConfiguration(mainClass.getName(), myProject, ApplicationConfigurationType.getInstance());
-        applicationConfiguration.setMainClass(mainClass);
-        applicationConfiguration.setWorkingDirectory(myProject.getBasePath());
-        applicationConfiguration.setVMParameters(vmParameters);
-        RunnerAndConfigurationSettings configuration = runManager.createConfiguration(applicationConfiguration, applicationConfiguration.getFactory());
-        runManager.addConfiguration(configuration);
-        RunManager.getInstance(myProject).setSelectedConfiguration(configuration);
-        //Messages.showMessageDialog(myProject, "Created new run configuration", "JavaFX Helper", Messages.getInformationIcon());
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            ApplicationConfiguration applicationConfiguration = new ApplicationConfiguration(mainClass.getName(), myProject, ApplicationConfigurationType.getInstance());
+            applicationConfiguration.setMainClass(mainClass);
+            applicationConfiguration.setWorkingDirectory(myProject.getBasePath());
+            applicationConfiguration.setVMParameters(vmParameters);
+            RunnerAndConfigurationSettings configuration = runManager.createConfiguration(applicationConfiguration, applicationConfiguration.getFactory());
+            runManager.addConfiguration(configuration);
+            RunManager.getInstance(myProject).setSelectedConfiguration(configuration);
+        });
+        // Messages.showMessageDialog(myProject, "Created new run configuration", "JavaFX Helper", Messages.getInformationIcon());
     }
 
+    // Find Main class
     private PsiClass findMainClass() {
+        if (mainClass != null) return mainClass;
         PsiManager manager = PsiManager.getInstance(myProject);
+        //Pattern p = Pattern.compile(".*\\s+extends\\s+Application.*");
         for (PsiClass psiClass : AllClassesSearch.search(GlobalSearchScope.projectScope(myProject), myProject)) {
-            if (psiClass.getText().contains("extends Application"))
+            //Matcher m = p.matcher(psiClass.getText());
+            //if (m.matches()) {
+            if (psiClass.getText().contains("extends Application")) {
+                //Messages.showMessageDialog(myProject, "Found main class " + psiClass.getQualifiedName(), "JavaFX Helper", Messages.getInformationIcon());
+                mainClass = psiClass;
                 return psiClass;
+            }
         }
         return null;
     }
 
+    // Update existing run configuration, add VM options
     private boolean changeRunConfiguration(String vmParameters) {
         for (RunnerAndConfigurationSettings runConfigSettings : RunManager.getInstance(myProject).getAllSettings()) {
-            if (runConfigSettings.getName().equals("Main")) {
-                ApplicationConfiguration appConf = (ApplicationConfiguration)runConfigSettings.getConfiguration();
-                appConf.setVMParameters(vmParameters);
-                RunManager.getInstance(myProject).setSelectedConfiguration(runConfigSettings);
-                Messages.showMessageDialog(myProject, "Changed run configuration", "JavaFX Helper", Messages.getInformationIcon());
+            if (runConfigSettings.getClass().equals(mainClass)) {
+                ApplicationManager.getApplication().runWriteAction(() -> {
+                    ApplicationConfiguration appConf = (ApplicationConfiguration) runConfigSettings.getConfiguration();
+                    appConf.setVMParameters(vmParameters);
+                    RunManager.getInstance(myProject).setSelectedConfiguration(runConfigSettings);
+                });
+                //Messages.showMessageDialog(myProject, "Changed run configuration", "JavaFX Helper", Messages.getInformationIcon());
                 return true;
             }
         }
         return false;
     }
 
+    // Add the configured JavaFX library to project
     private void addJavaFxLibrary() {
         LibraryTable projectLibraryTable = LibraryTablesRegistrar.getInstance().getLibraryTable(myProject);
         for (Library l : projectLibraryTable.getLibraries())
@@ -171,12 +189,13 @@ public class JavaFxConfiguratorService {
         }
     }
 
+    // Find Module (.iml file) that we have to update
     private Module findModule() {
         PsiClass mainClass = findMainClass();
         final ProjectFileIndex fileIndex = ProjectRootManager.getInstance(myProject).getFileIndex();
-        if (mainClass != null) {
+        if (mainClass != null)
             return fileIndex.getModuleForFile(PsiUtilCore.getVirtualFile(mainClass));
-        }
+
         // Couldn't find main class
         // Give us any class at all
         for (File file: new File(myProject.getBasePath()).listFiles()) {
@@ -188,6 +207,8 @@ public class JavaFxConfiguratorService {
         return null;
     }
 
+    // Look for FXML files in project - easy and quick way to detect JavaFX projects
+    // without overhead of PSI
     private void findFxml(String path) {
         for (File file: new File(path).listFiles()) {
             if (file.getName().toLowerCase().contains(".fxml")) {
