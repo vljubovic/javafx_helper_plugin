@@ -20,10 +20,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
-import com.intellij.psi.JavaPsiFacade;
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiManager;
-import com.intellij.psi.PsiReference;
+import com.intellij.psi.*;
 import com.intellij.psi.search.FileTypeIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiShortNamesCache;
@@ -46,6 +43,7 @@ public class JavaFxConfiguratorService {
     private boolean isJavaFxProject = false;
     private boolean isProjectConfigured = false;
     private PsiClass mainClass;
+    private Module mainClassModule;
 
     public JavaFxConfiguratorService(Project project) {
         myProject = project;
@@ -63,7 +61,7 @@ public class JavaFxConfiguratorService {
             isJavaFxProject = (findMainClass() != null);
 
         if (isJavaFxProject) {
-            //Messages.showMessageDialog(myProject, "Project " + myProject.getName() + " is a JavaFX project", "JavaFX Helper", Messages.getInformationIcon());
+            System.out.println("JavaFX Helper: Project " + myProject.getName() + " is a JavaFX project");
             findMainClass();
             if (mainClass == null) {
                 System.out.println("JavaFX Helper: Couldn't find main class on project " + myProject.getName());
@@ -96,13 +94,13 @@ public class JavaFxConfiguratorService {
             if (existingSdk.isPresent()) {
                 ApplicationManager.getApplication().runWriteAction(() ->
                     ProjectRootManager.getInstance(myProject).setProjectSdk(existingSdk.get()));
-                // Messages.showMessageDialog(myProject, "SDK was null, becomes " + existingSdk.get(), "JavaFX Helper", Messages.getInformationIcon());
+                System.out.println("JavaFX Helper: SDK was null, becomes " + existingSdk.get());
             }
-            // else
-                // Messages.showMessageDialog(myProject, "SDK is null, no Java SDK found", "JavaFX Helper", Messages.getInformationIcon());
+            else
+                System.out.println("JavaFX Helper: SDK is null, no Java SDK found");
         }
-        // else
-            // Messages.showMessageDialog(myProject, "SDK is " + projectSDK, "JavaFX Helper", Messages.getInformationIcon());
+         else
+            System.out.println("JavaFX Helper: SDK is " + projectSDK);
     }
 
     // Add new run configuration to project
@@ -114,11 +112,12 @@ public class JavaFxConfiguratorService {
             applicationConfiguration.setMainClass(mainClass);
             applicationConfiguration.setWorkingDirectory(myProject.getBasePath());
             applicationConfiguration.setVMParameters(vmParameters);
+            applicationConfiguration.setModule(findModule());
             RunnerAndConfigurationSettings configuration = runManager.createConfiguration(applicationConfiguration, applicationConfiguration.getFactory());
             runManager.addConfiguration(configuration);
             RunManager.getInstance(myProject).setSelectedConfiguration(configuration);
         });
-        // Messages.showMessageDialog(myProject, "Created new run configuration", "JavaFX Helper", Messages.getInformationIcon());
+        System.out.println("JavaFX Helper: Created new run configuration");
     }
 
     // Find Main class
@@ -130,8 +129,11 @@ public class JavaFxConfiguratorService {
             //Matcher m = p.matcher(psiClass.getText());
             //if (m.matches()) {
             if (psiClass.getText().contains("extends Application")) {
-                //Messages.showMessageDialog(myProject, "Found main class " + psiClass.getQualifiedName(), "JavaFX Helper", Messages.getInformationIcon());
+                System.out.println("JavaFX Helper: Found main class " + psiClass.getQualifiedName());
                 mainClass = psiClass;
+                VirtualFile virtualFile = PsiUtilCore.getVirtualFile(psiClass);
+                final ProjectFileIndex fileIndex = ProjectRootManager.getInstance(myProject).getFileIndex();
+                mainClassModule = fileIndex.getModuleForFile(virtualFile);
                 return psiClass;
             }
         }
@@ -147,7 +149,7 @@ public class JavaFxConfiguratorService {
                     appConf.setVMParameters(vmParameters);
                     RunManager.getInstance(myProject).setSelectedConfiguration(runConfigSettings);
                 });
-                //Messages.showMessageDialog(myProject, "Changed run configuration", "JavaFX Helper", Messages.getInformationIcon());
+                System.out.println("JavaFX Helper: Changed existing run configuration");
                 return true;
             }
         }
@@ -158,7 +160,10 @@ public class JavaFxConfiguratorService {
     private void addJavaFxLibrary() {
         LibraryTable projectLibraryTable = LibraryTablesRegistrar.getInstance().getLibraryTable(myProject);
         for (Library l : projectLibraryTable.getLibraries())
-            if (l.getName().equals("javafx")) return;
+            if (l.getName().equals("javafx")) {
+                System.out.println("JavaFX Helper: JavaFX library already added to project");
+                return;
+            }
 
         final LibraryTable.ModifiableModel projectLibraryModel = projectLibraryTable.getModifiableModel();
         AppSettingsState settings = AppSettingsState.getInstance();
@@ -168,6 +173,7 @@ public class JavaFxConfiguratorService {
         String pathUrl = VirtualFileManager.constructUrl(LocalFileSystem.PROTOCOL, settings.javaFxPath);
         VirtualFile file = VirtualFileManager.getInstance().findFileByUrl(pathUrl);
         final @Nullable Module module = findModule();
+        System.out.println("JavaFX Helper: Module is " + module.getModuleFilePath());
 
         if (file != null) {
             libraryModel.addRoot(file, OrderRootType.CLASSES);
@@ -180,10 +186,10 @@ public class JavaFxConfiguratorService {
                 public void run() {
                     libraryModel.commit();
                     projectLibraryModel.commit();
-                    if (module != null)
+                    if (module != null) {
                         ModuleRootModificationUtil.addDependency(module, library);
-                    //else
-                        //Messages.showMessageDialog(myProject, "Module is null", "JavaFX Helper", Messages.getInformationIcon());
+                        System.out.println("JavaFX Helper: Added JavaFX library to project");
+                    }
                 }
             });
         }
@@ -191,19 +197,28 @@ public class JavaFxConfiguratorService {
 
     // Find Module (.iml file) that we have to update
     private Module findModule() {
-        PsiClass mainClass = findMainClass();
+        if (mainClassModule != null)
+            return mainClassModule;
+
         final ProjectFileIndex fileIndex = ProjectRootManager.getInstance(myProject).getFileIndex();
-        if (mainClass != null)
-            return fileIndex.getModuleForFile(PsiUtilCore.getVirtualFile(mainClass));
+        if (mainClass != null) {
+            VirtualFile virtualFile = PsiUtilCore.getVirtualFile(mainClass);
+            if (virtualFile != null) {
+                mainClassModule = fileIndex.getModuleForFile(virtualFile);
+                return mainClassModule;
+            }
+        }
 
         // Couldn't find main class
         // Give us any class at all
         for (File file: new File(myProject.getBasePath()).listFiles()) {
             if (file.getName().toLowerCase().contains(".java")) {
                 String pathUrl = VirtualFileManager.constructUrl(LocalFileSystem.PROTOCOL, file.getAbsolutePath());
-                return fileIndex.getModuleForFile(VirtualFileManager.getInstance().findFileByUrl(pathUrl));
+                mainClassModule = fileIndex.getModuleForFile(VirtualFileManager.getInstance().findFileByUrl(pathUrl));
+                return mainClassModule;
             }
         }
+        System.out.println("JavaFX Helper: Couldn't find module");
         return null;
     }
 
