@@ -24,7 +24,7 @@
   <!-- Description of changes in the latest version of the plugin.
        Displayed in the "Plugins" settings dialog and the plugin repository Web interface.
        Simple HTML elements can be included between <![CDATA[  ]]> tags.  -->
-  <change-notes>Fix some exceptions and remove annoying popup, bump IDE version</change-notes>
+  <change-notes>Bump IDE version</change-notes>
 
 
   <!-- Text to display as company information on Preferences/Settings | Plugin page -->

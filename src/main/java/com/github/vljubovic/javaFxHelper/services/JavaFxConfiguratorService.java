@@ -159,21 +159,27 @@ public class JavaFxConfiguratorService {
     // Add the configured JavaFX library to project
     private void addJavaFxLibrary() {
         LibraryTable projectLibraryTable = LibraryTablesRegistrar.getInstance().getLibraryTable(myProject);
-        for (Library l : projectLibraryTable.getLibraries())
-            if (l.getName().equals("javafx")) {
-                System.out.println("JavaFX Helper: JavaFX library already added to project");
-                return;
-            }
-
         final LibraryTable.ModifiableModel projectLibraryModel = projectLibraryTable.getModifiableModel();
         AppSettingsState settings = AppSettingsState.getInstance();
+        Library library = null;
 
-        Library library = projectLibraryModel.createLibrary("javafx");
+        for (Library l : projectLibraryTable.getLibraries()) {
+            if (l.getName().equals("javafx")) {
+                library = l;
+            }
+        }
+
+        if (library == null) {
+            library = projectLibraryModel.createLibrary("javafx");
+
+        }
+
+        final Library theLibrary = library;
         final Library.ModifiableModel libraryModel = library.getModifiableModel();
         String pathUrl = VirtualFileManager.constructUrl(LocalFileSystem.PROTOCOL, settings.javaFxPath);
         VirtualFile file = VirtualFileManager.getInstance().findFileByUrl(pathUrl);
         final @Nullable Module module = findModule();
-        System.out.println("JavaFX Helper: Module is " + module.getModuleFilePath());
+        //System.out.println("JavaFX Helper: Module is " + module.getName());
 
         if (file != null) {
             libraryModel.addRoot(file, OrderRootType.CLASSES);
@@ -187,7 +193,7 @@ public class JavaFxConfiguratorService {
                     libraryModel.commit();
                     projectLibraryModel.commit();
                     if (module != null) {
-                        ModuleRootModificationUtil.addDependency(module, library);
+                        ModuleRootModificationUtil.addDependency(module, theLibrary);
                         System.out.println("JavaFX Helper: Added JavaFX library to project");
                     }
                 }
