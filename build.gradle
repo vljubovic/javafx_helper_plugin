@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'com.github.vljubovic'
-version '1.0.6'
+version '1.0.8'
 
 sourceCompatibility = 1.8
 
@@ -14,7 +14,7 @@ repositories {
 
 // See https://github.com/JetBrains/gradle-intellij-plugin/
 intellij {
-  version = '2021.1'
+  version = '2021.3'
   setPlugins('java')
 }
 
@@ -25,5 +25,5 @@ buildSearchableOptions {
 patchPluginXml {
   version = project.version
   sinceBuild = '201'
-  untilBuild = '211.*'
+  untilBuild = '213.*'
 }
